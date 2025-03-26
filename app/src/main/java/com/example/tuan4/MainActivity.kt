@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,6 +26,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import kotlinx.coroutines.delay
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,25 +40,30 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun OnBoardingApp() {
     val navController = rememberNavController()
+    val viewModel: TaskViewModel = viewModel() // 🔥 Khởi tạo ViewModel
+
     NavHost(navController, startDestination = "splash") {
         composable("splash") { SplashScreen(navController) }
         composable("onboarding/{index}") { backStackEntry ->
             val index = backStackEntry.arguments?.getString("index")?.toIntOrNull() ?: 1
             OnBoardingScreen(navController, index)
         }
-        composable("home") { MainScreen(navController) }
-        composable(
-            "taskDetail/{title}/{description}/{status}/{time}",
-        ) { backStackEntry ->
+        composable("home") { MainScreen(navController, viewModel) } // 🔥 Truyền ViewModel
+
+        composable("taskDetail/{title}/{description}/{status}/{time}") { backStackEntry ->
             val title = backStackEntry.arguments?.getString("title") ?: "Unknown"
             val description = backStackEntry.arguments?.getString("description") ?: "No description"
             val status = backStackEntry.arguments?.getString("status") ?: "Unknown"
             val time = backStackEntry.arguments?.getString("time") ?: "Unknown"
-            TaskDetailScreen(Task(title, description, status, time), navController)
+
+            TaskDetailScreen(
+                task = Task(title, description, status, time),
+                navController = navController,
+                viewModel = viewModel
+            )
         }
     }
 }
-
 
 @Composable
 fun SplashScreen(navController: NavHostController) {
@@ -97,8 +101,8 @@ fun OnBoardingScreen(navController: NavHostController, index: Int) {
         PageData("Reminder Notification", "Provides reminders...", R.drawable.img_3)
     )
 
-    val isLastPage = index == pages.size
     val isFirstPage = index == 1
+    val isLastPage = index == pages.size
 
     Column(
         modifier = Modifier
@@ -193,10 +197,10 @@ fun OnBoardingScreen(navController: NavHostController, index: Int) {
 
                 Button(
                     onClick = {
-                        if (isLastPage) {
-                            navController.navigate("home")
-                        } else {
+                        if (index < pages.size) {
                             navController.navigate("onboarding/${index + 1}")
+                        } else {
+                            navController.navigate("home")
                         }
                     },
                     modifier = Modifier
@@ -205,7 +209,7 @@ fun OnBoardingScreen(navController: NavHostController, index: Int) {
                         .clip(RoundedCornerShape(30.dp)),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E90FF))
                 ) {
-                    Text(text = if (isLastPage) "Get Started" else "Next", color = Color.White, fontSize = 18.sp)
+                    Text(text = if (index < pages.size) "Next" else "Get Started", color = Color.White, fontSize = 18.sp)
                 }
             }
         }
@@ -215,169 +219,89 @@ fun OnBoardingScreen(navController: NavHostController, index: Int) {
 }
 
 @Composable
-fun MainScreen(navController: NavController) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Header
-        Row(
+fun MainScreen(navController: NavController, viewModel: TaskViewModel) {
+    val taskList by remember { mutableStateOf(viewModel.taskList) }
+
+    Scaffold(
+        bottomBar = {
+            BottomNavigationBar(modifier = Modifier.offset(y = -25.dp))
+        }
+    ) { paddingValues ->
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 50.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .padding(paddingValues)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 15.dp, start = 16.dp, end = 16.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Image(
+                        painter = painterResource(id = R.drawable.img),
+                        contentDescription = "App Logo",
+                        modifier = Modifier.size(60.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "SmartTasks",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 26.sp,
+                            color = Color(0xFF00BFFF)
+                        )
+                        Text(
+                            text = "A simple and efficient to-do app",
+                            fontSize = 14.sp,
+                            color = Color(0xFF00BFFF)
+                        )
+                    }
+                }
                 Image(
-                    painter = painterResource(id = R.drawable.img),
-                    contentDescription = "App Logo",
-                    modifier = Modifier.size(70.dp)
+                    painter = painterResource(id = R.drawable.img_5),
+                    contentDescription = "Notifications",
+                    modifier = Modifier.size(28.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(text = "SmartTasks", fontWeight = FontWeight.Bold, fontSize = 30.sp, color = Color(0xFF00BFFF))
-                    Text(text = "A simple and efficient to-do app", fontSize = 15.sp, color = Color(0xFF00BFFF))
+            }
+
+            // Nội dung chính
+            if (taskList.isEmpty()) {
+                ErrorScreen(navController)
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    items(taskList) { task ->
+                        TaskCard(task, navController)
+                    }
                 }
             }
-            Image(
-                painter = painterResource(id = R.drawable.img_5),
-                contentDescription = "Notifications",
-                modifier = Modifier.size(30.dp).offset(x = -8.dp, y = -3.dp)
-            )
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxHeight(0.85f)
-                .padding(horizontal = 16.dp)
-        ) {
-            items(getTaskList()) { task ->
-                TaskCard(task, navController) // Truyền navController vào TaskCard
-            }
-        }
-        BottomNavigationBar()
-    }
-}
-
-@Composable
-fun BottomNavigationBar() {
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        // Thanh nền điều hướng
-        Row(
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .clip(RoundedCornerShape(30.dp))
-                .background(Color.White)
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon Home
-            Icon(
-                painter = painterResource(id = R.drawable.img_8),
-                contentDescription = "Home",
-                tint = Color(0xFF1E90FF),
-                modifier = Modifier.size(30.dp)
-            )
-
-            // Icon Calendar
-            Icon(
-                painter = painterResource(id = R.drawable.img_9),
-                contentDescription = "Calendar",
-                tint = Color.Gray,
-                modifier = Modifier.size(30.dp)
-            )
-
-            // Placeholder khoảng trống cho nút "+"
-            Spacer(modifier = Modifier.size(56.dp))
-
-            // Icon Document
-            Icon(
-                painter = painterResource(id = R.drawable.img_10),
-                contentDescription = "Document",
-                tint = Color.Gray,
-                modifier = Modifier.size(30.dp)
-            )
-
-            // Icon Settings
-            Icon(
-                painter = painterResource(id = R.drawable.img_11),
-                contentDescription = "Settings",
-                tint = Color.Gray,
-                modifier = Modifier.size(30.dp)
-            )
-        }
-
-        // Nút cộng nằm trên thanh điều hướng
-        FloatingActionButton(
-            onClick = { /* TODO: Chuyển đến màn hình thêm task */ },
-            modifier = Modifier
-                .size(56.dp)
-                .align(Alignment.Center)
-                .offset(y = -22.dp),
-            containerColor = Color(0xFF1E90FF),
-            shape = CircleShape
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.img_12),
-                contentDescription = "Add Task",
-                tint = Color.White,
-                modifier = Modifier.size(25.dp)
-            )
         }
     }
 }
 
 @Composable
 fun TaskCard(task: Task, navController: NavController) {
-    val backgroundColor = when (task.title) {
-        "Complete Android Project" -> Color(0xFFFFC0CB)
-        "Doctor Appointment 2" -> Color(0xFFDCDCAB)
-        "Meeting" -> Color(0xFF87CEEB)
-        else -> Color.LightGray
-    }
-
-    var isChecked by remember { mutableStateOf(false) }
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(8.dp)
             .clickable {
                 navController.navigate("taskDetail/${task.title}/${task.description}/${task.status}/${task.time}")
-            }, // Điều hướng khi nhấn vào
-        colors = CardDefaults.cardColors(containerColor = backgroundColor),
-        shape = RoundedCornerShape(8.dp)
+            },
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E90FF))
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = isChecked,
-                    onCheckedChange = { isChecked = it }
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Column {
-                    Text(text = task.title, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    Text(text = task.description, fontSize = 17.sp)
-                }
-            }
-
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = task.title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "Status: ${task.status}", fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                Text(text = task.time, fontSize = 17.sp, color = Color.Gray)
-            }
+            Text(text = task.description, fontSize = 14.sp, color = Color.White)
         }
     }
 }
@@ -390,46 +314,6 @@ fun ErrorScreen(navController: NavController) {
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Header với Logo và Chuông thông báo
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 40.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(id = R.drawable.img),
-                    contentDescription = "App Logo",
-                    modifier = Modifier.size(70.dp)
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Column {
-                    Text(
-                        text = "SmartTasks",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 30.sp
-                    )
-                    Text(
-                        text = "A simple and efficient to-do app",
-                        fontSize = 15.sp,
-                        color = Color.Gray
-                    )
-                }
-            }
-
-            Image(
-                painter = painterResource(id = R.drawable.img_5),
-                contentDescription = "Notifications",
-                modifier = Modifier
-                    .size(30.dp)
-                    .offset(x = -8.dp, y = -3.dp)
-            )
-        }
-
         // Hình ảnh trong khung xám
         Box(
             modifier = Modifier
@@ -445,35 +329,37 @@ fun ErrorScreen(navController: NavController) {
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(30.dp))
 
         Text(
             text = "No Tasks Yet!",
             fontWeight = FontWeight.Bold,
-            fontSize = 18.sp
+            fontSize = 30.sp
         )
+
+        Spacer(modifier = Modifier.height(25.dp))
 
         Text(
             text = "Stay productive—add something to do",
-            fontSize = 14.sp,
+            fontSize = 20.sp,
+            textAlign = TextAlign.Center,
             color = Color.Gray
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(350.dp))
 
-        BottomNavigationBar()
+        BottomNavigationBar(Modifier.offset(y = -10.dp))
     }
 }
 
 @Composable
-fun TaskDetailScreen(task: Task, navController: NavController) {
-
+fun TaskDetailScreen(navController: NavController, task: Task, viewModel: TaskViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(top = 50.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
     ) {
-        // Header: Mũi tên quay lại + Tiêu đề + Thùng rác
+        // Header giữ nguyên
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -489,16 +375,16 @@ fun TaskDetailScreen(task: Task, navController: NavController) {
                     .clickable { navController.popBackStack() }
             )
 
-            Spacer(modifier = Modifier.weight(1f)) // Cân chỉnh vị trí title ở giữa
+            Spacer(modifier = Modifier.weight(1f))
 
             Text(
-                text = "Detail",
+                text = "Task Detail",
                 fontSize = 40.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF00BFFF)
             )
 
-            Spacer(modifier = Modifier.weight(1f)) // Cân chỉnh vị trí title ở giữa
+            Spacer(modifier = Modifier.weight(1f))
 
             Icon(
                 painter = painterResource(id = R.drawable.img_15),
@@ -506,16 +392,14 @@ fun TaskDetailScreen(task: Task, navController: NavController) {
                 tint = Color.Unspecified,
                 modifier = Modifier
                     .size(40.dp)
-                    .clickable { /* Xử lý xóa công việc */ }
+                    .clickable { /* Xử lý xóa task */ }
             )
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Task Title
         Text(text = task.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
 
-        // Task Description
         Text(
             text = task.description,
             fontSize = 16.sp,
@@ -524,7 +408,7 @@ fun TaskDetailScreen(task: Task, navController: NavController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Task Details (Category, Status, Priority)
+        // Giữ nguyên bố cục UI chi tiết task
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color(0xFFD0A7A7)),
@@ -534,7 +418,7 @@ fun TaskDetailScreen(task: Task, navController: NavController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 16.dp, horizontal = 20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, // Căn đều giữa các cột
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TaskDetailItem(icon = R.drawable.img_16, label = "Category", value = "Work")
@@ -651,4 +535,78 @@ fun getTaskList(): List<Task> {
         Task("Doctor Appointment 2", "This task is related to Work. It needs to be completed", "Pending", "14:00 2500-03-26"),
         Task("Meeting", "This task is related to Fitness. It needs to be completed", "Pending", "14:00 2500-03-26")
     )
+}
+
+@Composable
+fun BottomNavigationBar(modifier: Modifier) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset(y = -25.dp), // 🔥 Đẩy toàn bộ thanh navigation lên 10dp
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        // Thanh nền điều hướng
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .clip(RoundedCornerShape(30.dp))
+                .background(Color.White)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon Home
+            Icon(
+                painter = painterResource(id = R.drawable.img_8),
+                contentDescription = "Home",
+                tint = Color(0xFF1E90FF),
+                modifier = Modifier.size(30.dp)
+            )
+
+            // Icon Calendar
+            Icon(
+                painter = painterResource(id = R.drawable.img_9),
+                contentDescription = "Calendar",
+                tint = Color.Gray,
+                modifier = Modifier.size(30.dp)
+            )
+
+            // Placeholder khoảng trống cho nút "+"
+            Spacer(modifier = Modifier.size(56.dp))
+
+            // Icon Document
+            Icon(
+                painter = painterResource(id = R.drawable.img_10),
+                contentDescription = "Document",
+                tint = Color.Gray,
+                modifier = Modifier.size(30.dp)
+            )
+
+            // Icon Settings
+            Icon(
+                painter = painterResource(id = R.drawable.img_11),
+                contentDescription = "Settings",
+                tint = Color.Gray,
+                modifier = Modifier.size(30.dp)
+            )
+        }
+
+        // Nút cộng nằm trên thanh điều hướng
+        FloatingActionButton(
+            onClick = { /* TODO: Chuyển đến màn hình thêm task */ },
+            modifier = Modifier
+                .size(56.dp)
+                .align(Alignment.Center)
+                .offset(y = -22.dp),
+            containerColor = Color(0xFF1E90FF),
+            shape = CircleShape
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.img_12),
+                contentDescription = "Add Task",
+                tint = Color.White,
+                modifier = Modifier.size(25.dp)
+            )
+        }
+    }
 }

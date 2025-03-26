@@ -40,6 +40,8 @@ android {
 }
 
 dependencies {
+    implementation ("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
     implementation(platform("androidx.compose:compose-bom:2024.02.02")) // Sử dụng BOM để tránh xung đột
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
